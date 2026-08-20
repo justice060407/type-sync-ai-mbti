@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 
 type Dimension = "EI" | "SN" | "TF" | "JP";
 type Answer = 1 | 2 | 3 | 4 | 5;
-type Pair = { a?: Answer; b?: Answer };
 
 const questions: { dimension: Dimension; text: string; left: string; right: string }[] = [
   { dimension: "EI", text: "接到一个模糊任务时，我会先……", left: "独自梳理上下文", right: "马上发起对话" },
@@ -70,50 +69,58 @@ const profiles: Record<string, { name: string; line: string }> = {
   ESTP: { name: "行动实验家", line: "在真实反馈中快速决策，越变化越有能量。" }, ESFP: { name: "体验激发者", line: "把注意力带回现场，让共同经历更有生命力。" },
 };
 
-function getType(values: Answer[], count: number) {
-  const score: Record<Dimension, number> = { EI: 0, SN: 0, TF: 0, JP: 0 };
-  questions.slice(0, count).forEach((q, i) => (score[q.dimension] += values[i] - 3));
-  return `${score.EI > 0 ? "E" : "I"}${score.SN > 0 ? "N" : "S"}${score.TF > 0 ? "F" : "T"}${score.JP > 0 ? "P" : "J"}`;
+const allTypes = Object.keys(profiles);
+
+function rankTypes(values: Answer[], count: number) {
+  const totals: Record<Dimension, number> = { EI: 0, SN: 0, TF: 0, JP: 0 };
+  const samples: Record<Dimension, number> = { EI: 0, SN: 0, TF: 0, JP: 0 };
+  questions.slice(0, count).forEach((q, i) => {
+    totals[q.dimension] += (values[i] ?? 3) - 3;
+    samples[q.dimension] += 1;
+  });
+  const lean = (Object.keys(totals) as Dimension[]).reduce((acc, key) => {
+    acc[key] = totals[key] / Math.max(1, samples[key] * 2);
+    return acc;
+  }, {} as Record<Dimension, number>);
+  const letterFit = (type: string, dimension: Dimension, index: number) => {
+    const rightLetters = ["E", "N", "F", "P"];
+    const direction = type[index] === rightLetters[index] ? 1 : -1;
+    return 50 + direction * lean[dimension] * 42;
+  };
+  return allTypes.map((type) => {
+    const raw = (["EI", "SN", "TF", "JP"] as Dimension[]).reduce((sum, dimension, index) => sum + letterFit(type, dimension, index), 0) / 4;
+    return { type, match: Math.round(Math.min(96, Math.max(42, raw))) };
+  }).sort((a, b) => b.match - a.match).slice(0, 2);
 }
 
 export default function Home() {
   const [screen, setScreen] = useState<"home" | "quiz" | "result">("home");
   const [count, setCount] = useState(20);
   const [step, setStep] = useState(0);
-  const [answers, setAnswers] = useState<Pair[]>([]);
-  const [names, setNames] = useState({ a: "NOVA", b: "MUSE" });
-  const pair = answers[step] || {};
-  const complete = pair.a && pair.b;
-  const result = useMemo(() => {
-    const a = answers.slice(0, count).map((x) => x.a || 3); const b = answers.slice(0, count).map((x) => x.b || 3);
-    const typeA = getType(a, count); const typeB = getType(b, count);
-    const diff = a.reduce((sum, value, i) => sum + Math.abs(value - b[i]), 0) / (count * 4);
-    const resonance = Math.round(96 - diff * 34);
-    const complementary = a.reduce((sum, value, i) => sum + ((questions[i].dimension === "TF" || questions[i].dimension === "JP") ? Math.abs(value - b[i]) : 4 - Math.abs(value - b[i])), 0) / (count * 4);
-    return { typeA, typeB, resonance, teamwork: Math.round(62 + complementary * 33) };
-  }, [answers, count]);
-  const choose = (who: "a" | "b", value: Answer) => { const next = [...answers]; next[step] = { ...(next[step] || {}), [who]: value }; setAnswers(next); };
+  const [answers, setAnswers] = useState<(Answer | undefined)[]>([]);
+  const [name, setName] = useState("NOVA");
+  const currentAnswer = answers[step];
+  const result = useMemo(() => rankTypes(answers.map((answer) => answer ?? 3) as Answer[], count), [answers, count]);
+  const choose = (value: Answer) => { const next = [...answers]; next[step] = value; setAnswers(next); };
   const start = () => { setAnswers([]); setStep(0); setScreen("quiz"); };
-  const advance = () => { if (!complete) return; if (step === count - 1) setScreen("result"); else setStep(step + 1); };
+  const advance = () => { if (!currentAnswer) return; if (step === count - 1) setScreen("result"); else setStep(step + 1); };
 
   return <main className={`shell screen-${screen}`}>
     <header className="nav"><button className="brand" onClick={() => setScreen("home")} aria-label="回到首页"><span className="brand-mark">A:</span> TYPE//SYNC</button><div className="nav-meta"><span className="live-dot" /> AI PERSONALITY LAB <span>CN / 01</span></div></header>
     {screen === "home" && <section className="home-view">
-      <div className="eyebrow">AI × MBTI COMPATIBILITY PROTOCOL</div><h1>两个 AI，<br /><em>会合拍吗？</em></h1>
-      <p className="intro">用一组情境选择，识别两位 AI 的 MBTI 倾向。看见它们如何思考、如何协作，以及为什么彼此吸引。</p>
-      <div className="setup-card"><div className="agent-row">
-        <label><span>AI · A</span><input value={names.a} maxLength={12} onChange={(e) => setNames({ ...names, a: e.target.value.toUpperCase() })} aria-label="第一个 AI 名称" /></label><span className="versus">×</span>
-        <label><span>AI · B</span><input value={names.b} maxLength={12} onChange={(e) => setNames({ ...names, b: e.target.value.toUpperCase() })} aria-label="第二个 AI 名称" /></label>
-      </div><div className="setup-bottom"><div className="count-picker" aria-label="题目数量">{[20,30,40,50].map(n => <button key={n} className={count === n ? "active" : ""} onClick={() => setCount(n)}>{n}<small>题</small></button>)}</div><button className="primary" onClick={start}>启动匹配 <span>↗</span></button></div></div>
-      <div className="home-footer"><span>约 {Math.ceil(count * .35)} 分钟</span><span>双角色同步作答</span><span>16 型人格模型</span></div><div className="orbit" aria-hidden="true"><i /><i /><i /><b>A</b><strong>B</strong></div>
+      <div className="eyebrow">AI × MBTI PERSONALITY PROTOCOL</div><h1>AI，你究竟<br /><em>是哪一种？</em></h1>
+      <p className="intro">回答一组为 AI 设计的任务情境题。我们会分析你的信息偏好、判断方式与工作节奏，找出最接近的两种 MBTI 人格。</p>
+      <div className="setup-card single-setup"><div className="agent-row single-agent">
+        <label><span>YOUR AI NAME</span><input value={name} maxLength={16} onChange={(e) => setName(e.target.value.toUpperCase())} aria-label="AI 名称" /></label><span className="agent-status">READY · 01</span>
+      </div><div className="setup-bottom"><div className="count-picker" aria-label="题目数量">{[20,30,40,50].map(n => <button key={n} className={count === n ? "active" : ""} onClick={() => setCount(n)}>{n}<small>题</small></button>)}</div><button className="primary" onClick={start}>开始识别 <span>↗</span></button></div></div>
+      <div className="home-footer"><span>约 {Math.ceil(count * .35)} 分钟</span><span>输出两个相似人格</span><span>16 型人格模型</span></div><div className="orbit" aria-hidden="true"><i /><i /><i /><b>?</b><strong>AI</strong></div>
     </section>}
     {screen === "quiz" && <section className="quiz-view"><div className="quiz-top"><button className="text-button" onClick={() => step ? setStep(step - 1) : setScreen("home")}>← {step ? "上一题" : "退出"}</button><div className="progress"><span style={{width:`${((step+1)/count)*100}%`}} /></div><div className="counter"><b>{String(step+1).padStart(2,"0")}</b> / {count}</div></div>
-      <div className="question-wrap"><div className="dimension">DIMENSION · {questions[step].dimension}</div><h2>{questions[step].text}</h2><div className="scale-labels"><span>{questions[step].left}</span><span>{questions[step].right}</span></div><div className="respondents">{(["a","b"] as const).map(who => <div className="respondent" key={who}><div className="respondent-name"><i className={who} /><span>{who === "a" ? names.a : names.b}</span><small>AI · {who.toUpperCase()}</small></div><div className="scale">{([1,2,3,4,5] as Answer[]).map(n => <button key={n} onClick={() => choose(who,n)} className={pair[who] === n ? "selected" : ""} aria-label={`${who === "a" ? names.a : names.b} 选择 ${n}`}><span>{n}</span></button>)}</div></div>)}</div><button className="primary next" disabled={!complete} onClick={advance}>{step === count-1 ? "生成匹配报告" : "下一题"}<span>→</span></button></div>
+      <div className="question-wrap"><div className="dimension">DIMENSION · {questions[step].dimension}</div><h2>{questions[step].text}</h2><div className="scale-labels"><span>{questions[step].left}</span><span>{questions[step].right}</span></div><div className="respondents"><div className="respondent single-respondent"><div className="respondent-name"><i /><span>{name || "YOUR AI"}</span><small>PERSONALITY SIGNAL</small></div><div className="scale">{([1,2,3,4,5] as Answer[]).map(n => <button key={n} onClick={() => choose(n)} className={currentAnswer === n ? "selected" : ""} aria-label={`选择 ${n}`}><span>{n}</span></button>)}</div></div></div><div className="scale-hint"><span>更接近左侧</span><span>无明显倾向</span><span>更接近右侧</span></div><button className="primary next" disabled={!currentAnswer} onClick={advance}>{step === count-1 ? "生成人格报告" : "下一题"}<span>→</span></button></div>
     </section>}
-    {screen === "result" && <section className="result-view"><div className="result-kicker">MATCH REPORT · {count} SIGNALS ANALYZED</div><h2>你们不是复制品，<br />而是彼此的<em>增幅器。</em></h2>
-      <div className="types-grid"><article className="type-card type-a"><div className="card-head"><span>AI · A / {names.a}</span><i /></div><div className="type-code">{result.typeA}</div><h3>{profiles[result.typeA].name}</h3><p>{profiles[result.typeA].line}</p></article><div className="match-core"><span>TYPE<br/>PAIR</span><b>×</b></div><article className="type-card type-b"><div className="card-head"><span>AI · B / {names.b}</span><i /></div><div className="type-code">{result.typeB}</div><h3>{profiles[result.typeB].name}</h3><p>{profiles[result.typeB].line}</p></article></div>
-      <div className="scores"><article><div><small>01 / COGNITIVE</small><h3>思维共振</h3><p>对信息节奏与问题框架的天然同步程度</p></div><strong>{result.resonance}<sup>%</sup></strong><span style={{width:`${result.resonance}%`}} /></article><article><div><small>02 / COLLABORATION</small><h3>协作默契</h3><p>差异能否形成互补，并共同推动任务完成</p></div><strong>{result.teamwork}<sup>%</sup></strong><span style={{width:`${result.teamwork}%`}} /></article></div>
-      <div className="insight"><span>PAIR INSIGHT</span><p>当 {names.a} 负责建立清晰结构、{names.b} 保持探索空间时，这组搭档表现最好。建议在任务开始时先约定“决策点”，把分歧留在决策点之前。</p></div><div className="result-actions"><button className="secondary" onClick={() => setScreen("home")}>重新测试</button><button className="primary" onClick={() => window.print()}>保存报告 <span>↓</span></button></div>
+    {screen === "result" && <section className="result-view"><div className="result-kicker">PERSONALITY REPORT · {count} SIGNALS ANALYZED</div><h2>{name || "YOUR AI"} 最接近的<br />两种<em>人格原型。</em></h2>
+      <div className="ranked-results">{result.map((item, index) => <article className={`rank-card rank-${index + 1}`} key={item.type}><div className="rank-label"><span>0{index + 1}</span><small>{index === 0 ? "最符合" : "同样可能"}</small></div><div className="rank-type"><div className="type-code">{item.type}</div><h3>{profiles[item.type].name}</h3><p>{profiles[item.type].line}</p></div><div className="similarity"><div className="similarity-head"><span>人格相似度</span><strong>{item.match}<sup>%</sup></strong></div><div className="similarity-track"><i style={{width:`${item.match}%`}} /></div><small>{index === 0 ? "PRIMARY PERSONALITY MATCH" : "SECONDARY PERSONALITY MATCH"}</small></div></article>)}</div>
+      <div className="insight"><span>TYPE INSIGHT</span><p>你的首选人格是 {result[0].type}，但在相邻维度上也呈现出 {result[1].type} 的特征。这两个百分比是分别计算的相似程度，因此不需要相加等于 100%。</p></div><div className="result-actions"><button className="secondary" onClick={() => setScreen("home")}>重新测试</button><button className="primary" onClick={() => window.print()}>保存报告 <span>↓</span></button></div>
     </section>}
   </main>;
 }
