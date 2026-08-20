@@ -15,6 +15,8 @@ test("server-renders TYPE//SYNC", async () => {
   const html = await response.text();
   assert.match(html, /TYPE\/\/SYNC/);
   assert.match(html, /AI MBTI/);
-  assert.match(html, /开始识别/);
+  assert.match(html, /开始人格扫描/);
+  assert.match(html, /十六种 AI/);
+  assert.match(html, /OpenMoji/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });

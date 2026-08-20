@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 type Dimension = "EI" | "SN" | "TF" | "JP";
 type Answer = 1 | 2 | 3 | 4 | 5;
+type HistoryRecord = { id: number; aiName: string; questionCount: number; primaryType: string; primaryMatch: number; secondaryType: string; secondaryMatch: number; createdAt: string };
 
 const questions: { dimension: Dimension; text: string; left: string; right: string }[] = [
   { dimension: "EI", text: "接到一个模糊任务时，我会先……", left: "独自梳理上下文", right: "马上发起对话" },
@@ -69,6 +70,13 @@ const profiles: Record<string, { name: string; line: string }> = {
   ESTP: { name: "行动实验家", line: "在真实反馈中快速决策，越变化越有能量。" }, ESFP: { name: "体验激发者", line: "把注意力带回现场，让共同经历更有生命力。" },
 };
 
+const typeGroups: Record<string, { group: string; accent: string; traits: string }> = {
+  INTJ:{group:"分析者",accent:"紫",traits:"系统 · 远见 · 独立"}, INTP:{group:"分析者",accent:"紫",traits:"逻辑 · 好奇 · 解构"}, ENTJ:{group:"分析者",accent:"紫",traits:"目标 · 组织 · 决断"}, ENTP:{group:"分析者",accent:"紫",traits:"创意 · 辩证 · 变化"},
+  INFJ:{group:"外交家",accent:"绿",traits:"洞察 · 意义 · 长期"}, INFP:{group:"外交家",accent:"绿",traits:"价值 · 想象 · 真诚"}, ENFJ:{group:"外交家",accent:"绿",traits:"共情 · 引导 · 联结"}, ENFP:{group:"外交家",accent:"绿",traits:"热情 · 灵感 · 可能"},
+  ISTJ:{group:"守护者",accent:"蓝",traits:"事实 · 秩序 · 可靠"}, ISFJ:{group:"守护者",accent:"蓝",traits:"细致 · 稳定 · 照料"}, ESTJ:{group:"守护者",accent:"蓝",traits:"规则 · 效率 · 执行"}, ESFJ:{group:"守护者",accent:"蓝",traits:"协作 · 关怀 · 责任"},
+  ISTP:{group:"探险家",accent:"黄",traits:"机制 · 冷静 · 实作"}, ISFP:{group:"探险家",accent:"黄",traits:"感知 · 审美 · 自由"}, ESTP:{group:"探险家",accent:"黄",traits:"行动 · 反馈 · 应变"}, ESFP:{group:"探险家",accent:"黄",traits:"体验 · 活力 · 分享"},
+};
+
 const allTypes = Object.keys(profiles);
 
 function rankTypes(values: Answer[], count: number) {
@@ -94,33 +102,71 @@ function rankTypes(values: Answer[], count: number) {
 }
 
 export default function Home() {
-  const [screen, setScreen] = useState<"home" | "quiz" | "result">("home");
-  const [count, setCount] = useState(20);
+  const [screen, setScreen] = useState<"home" | "quiz" | "result" | "history">("home");
+  const [count, setCount] = useState(48);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<(Answer | undefined)[]>([]);
   const [name, setName] = useState("NOVA");
+  const [history, setHistory] = useState<HistoryRecord[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
   const currentAnswer = answers[step];
   const result = useMemo(() => rankTypes(answers.map((answer) => answer ?? 3) as Answer[], count), [answers, count]);
   const choose = (value: Answer) => { const next = [...answers]; next[step] = value; setAnswers(next); };
+  const getClientId = () => {
+    const key = "type-sync-client-id";
+    const existing = window.localStorage.getItem(key);
+    if (existing) return existing;
+    const created = window.crypto.randomUUID();
+    window.localStorage.setItem(key, created);
+    return created;
+  };
+  const loadHistory = async () => {
+    setHistoryLoading(true);
+    try {
+      const response = await fetch(`/api/history?clientId=${encodeURIComponent(getClientId())}`);
+      const data = await response.json() as { records?: HistoryRecord[] };
+      setHistory(data.records ?? []);
+    } finally { setHistoryLoading(false); }
+  };
   const start = () => { setAnswers([]); setStep(0); setScreen("quiz"); };
-  const advance = () => { if (!currentAnswer) return; if (step === count - 1) setScreen("result"); else setStep(step + 1); };
+  const openHistory = () => { setScreen("history"); void loadHistory(); };
+  const finish = async () => {
+    const ranked = rankTypes(answers.map((answer) => answer ?? 3) as Answer[], count);
+    try {
+      const response = await fetch("/api/history", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({ clientId:getClientId(), aiName:name || "YOUR AI", questionCount:count, primaryType:ranked[0].type, primaryMatch:ranked[0].match, secondaryType:ranked[1].type, secondaryMatch:ranked[1].match }) });
+      const data = await response.json() as { record?: HistoryRecord };
+      if (data.record) setHistory((current) => [data.record!, ...current].slice(0, 20));
+    } finally { setScreen("result"); }
+  };
+  const advance = () => { if (!currentAnswer) return; if (step === count - 1) void finish(); else setStep(step + 1); };
 
   return <main className={`shell screen-${screen}`}>
-    <header className="nav"><button className="brand" onClick={() => setScreen("home")} aria-label="回到首页"><span className="brand-mark">A:</span> TYPE//SYNC</button><div className="nav-meta"><span className="live-dot" /> AI PERSONALITY LAB <span>CN / 01</span></div></header>
-    {screen === "home" && <section className="home-view">
-      <div className="eyebrow">AI × MBTI PERSONALITY PROTOCOL</div><h1>AI，你究竟<br /><em>是哪一种？</em></h1>
-      <p className="intro">回答一组为 AI 设计的任务情境题。我们会分析你的信息偏好、判断方式与工作节奏，找出最接近的两种 MBTI 人格。</p>
-      <div className="setup-card single-setup"><div className="agent-row single-agent">
-        <label><span>YOUR AI NAME</span><input value={name} maxLength={16} onChange={(e) => setName(e.target.value.toUpperCase())} aria-label="AI 名称" /></label><span className="agent-status">READY · 01</span>
-      </div><div className="setup-bottom"><div className="count-picker" aria-label="题目数量">{[20,30,40,50].map(n => <button key={n} className={count === n ? "active" : ""} onClick={() => setCount(n)}>{n}<small>题</small></button>)}</div><button className="primary" onClick={start}>开始识别 <span>↗</span></button></div></div>
-      <div className="home-footer"><span>约 {Math.ceil(count * .35)} 分钟</span><span>输出两个相似人格</span><span>16 型人格模型</span></div><div className="orbit" aria-hidden="true"><i /><i /><i /><b>?</b><strong>AI</strong></div>
-    </section>}
+    <header className="nav"><button className="brand" onClick={() => setScreen("home")} aria-label="回到首页"><span className="brand-mark">A:</span> TYPE//SYNC</button>{screen === "home" ? <nav className="nav-links" aria-label="页面导航"><a href="#atlas">人格图鉴</a><button onClick={openHistory}>历史记录</button><a href="#start">开始测试</a></nav> : <div className="nav-meta"><button className="nav-history" onClick={openHistory}>历史记录</button><span className="live-dot" /> AI PERSONALITY LAB <span>CN / 01</span></div>}</header>
+    {screen === "home" && <>
+      <section className="home-view hero-v2">
+        <div className="hero-copy"><div className="eyebrow">MBTI TEST, BUILT FOR AI</div><h1>给 AI 测一次<br /><em>MBTI。</em></h1>
+        <p className="intro"><strong>让 AI 看见自己的思考方式。</strong>通过任务情境观察它如何处理模糊需求、判断信息、回应反馈与推进项目，最终得到两个最相似的人格原型。</p>
+        <div className="hero-proof"><span><b>04</b> 个偏好维度</span><span><b>16</b> 种人格原型</span><span><b>02</b> 个相似结果</span></div></div>
+        <div className="setup-card single-setup" id="start"><div className="card-index">TEST CONSOLE <span>01 / 01</span></div><div className="agent-row single-agent">
+          <label><span>输入参与测试的 AI 名称</span><input value={name} maxLength={16} onChange={(e) => setName(e.target.value.toUpperCase())} aria-label="AI 名称" /></label><span className="agent-status">SIGNAL READY</span>
+        </div><div className="test-mode-label">选择测试深度</div><div className="mode-picker" aria-label="题目数量">{[{n:36,label:"标准识别",time:"约 10 分钟"},{n:48,label:"深度识别",time:"约 15 分钟"}].map(item => <button key={item.n} className={count === item.n ? "active" : ""} onClick={() => setCount(item.n)}><span><b>{item.n}</b> 题</span><small>{item.label} · {item.time}</small><i /></button>)}</div><button className="primary hero-cta" onClick={start}>开始人格扫描 <span>↗</span></button><p className="privacy-note">不保存答案 · 结果仅用于探索与娱乐</p></div>
+        <div className="orbit" aria-hidden="true"><i /><i /><i /><b>?</b><strong>AI</strong></div>
+      </section>
+
+      <section className="atlas-section" id="atlas"><div className="section-heading"><div><span>16 / TYPE ATLAS</span><h2>十六种 AI，<br />十六种理解世界的方式。</h2></div><p>人格没有高低之分。每一种类型都是四组偏好的独特组合，也都有更擅长的任务环境。</p></div>
+        <div className="type-filters"><span>分析者 · NT</span><span>外交家 · NF</span><span>守护者 · SJ</span><span>探险家 · SP</span></div>
+        <div className="atlas-grid">{allTypes.map((type,index) => <article className={`atlas-card group-${typeGroups[type].group}`} key={type}><div className="atlas-top"><span>{String(index+1).padStart(2,"0")}</span><small>{typeGroups[type].group}</small></div><div className="atlas-image"><img src={`/mbti/${type.toLowerCase()}.svg`} alt={`${type} ${profiles[type].name}象征插画`} /></div><div className="atlas-code">{type}</div><h3>{profiles[type].name}</h3><p>{profiles[type].line}</p><div className="atlas-traits">{typeGroups[type].traits}</div></article>)}</div>
+      </section>
+
+      <footer className="site-footer"><div className="brand"><span className="brand-mark">A:</span> TYPE//SYNC</div><p className="footer-declaration">声明：本站依据 E–I、S–N、T–F、J–P 四组公开偏好维度，独立创作面向 AI 任务场景的问题；不是官方 MBTI® 测评，不用于心理诊断、招聘筛选或高风险决策。测试记录仅保存名称、题量、时间和两个结果，不保存逐题答案。</p><small>Illustrations by <a href="https://openmoji.org/" target="_blank" rel="noreferrer">OpenMoji</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noreferrer">CC BY-SA 4.0</a></small></footer>
+    </>}
     {screen === "quiz" && <section className="quiz-view"><div className="quiz-top"><button className="text-button" onClick={() => step ? setStep(step - 1) : setScreen("home")}>← {step ? "上一题" : "退出"}</button><div className="progress"><span style={{width:`${((step+1)/count)*100}%`}} /></div><div className="counter"><b>{String(step+1).padStart(2,"0")}</b> / {count}</div></div>
       <div className="question-wrap"><div className="dimension">DIMENSION · {questions[step].dimension}</div><h2>{questions[step].text}</h2><div className="scale-labels"><span>{questions[step].left}</span><span>{questions[step].right}</span></div><div className="respondents"><div className="respondent single-respondent"><div className="respondent-name"><i /><span>{name || "YOUR AI"}</span><small>PERSONALITY SIGNAL</small></div><div className="scale">{([1,2,3,4,5] as Answer[]).map(n => <button key={n} onClick={() => choose(n)} className={currentAnswer === n ? "selected" : ""} aria-label={`选择 ${n}`}><span>{n}</span></button>)}</div></div></div><div className="scale-hint"><span>更接近左侧</span><span>无明显倾向</span><span>更接近右侧</span></div><button className="primary next" disabled={!currentAnswer} onClick={advance}>{step === count-1 ? "生成人格报告" : "下一题"}<span>→</span></button></div>
     </section>}
     {screen === "result" && <section className="result-view"><div className="result-kicker">PERSONALITY REPORT · {count} SIGNALS ANALYZED</div><h2>{name || "YOUR AI"} 最接近的<br />两种<em>人格原型。</em></h2>
-      <div className="ranked-results">{result.map((item, index) => <article className={`rank-card rank-${index + 1}`} key={item.type}><div className="rank-label"><span>0{index + 1}</span><small>{index === 0 ? "最符合" : "同样可能"}</small></div><div className="rank-type"><div className="type-code">{item.type}</div><h3>{profiles[item.type].name}</h3><p>{profiles[item.type].line}</p></div><div className="similarity"><div className="similarity-head"><span>人格相似度</span><strong>{item.match}<sup>%</sup></strong></div><div className="similarity-track"><i style={{width:`${item.match}%`}} /></div><small>{index === 0 ? "PRIMARY PERSONALITY MATCH" : "SECONDARY PERSONALITY MATCH"}</small></div></article>)}</div>
-      <div className="insight"><span>TYPE INSIGHT</span><p>你的首选人格是 {result[0].type}，但在相邻维度上也呈现出 {result[1].type} 的特征。这两个百分比是分别计算的相似程度，因此不需要相加等于 100%。</p></div><div className="result-actions"><button className="secondary" onClick={() => setScreen("home")}>重新测试</button><button className="primary" onClick={() => window.print()}>保存报告 <span>↓</span></button></div>
+      <div className="ranked-results">{result.map((item, index) => <article className={`rank-card rank-${index + 1}`} key={item.type}><div className="rank-label"><span>0{index + 1}</span><small>{index === 0 ? "最符合" : "同样可能"}</small></div><div className="result-portrait"><img src={`/mbti/${item.type.toLowerCase()}.svg`} alt="" /></div><div className="rank-type"><div className="type-code">{item.type}</div><h3>{profiles[item.type].name}</h3><p>{profiles[item.type].line}</p></div><div className="similarity"><div className="similarity-head"><span>人格相似度</span><strong>{item.match}<sup>%</sup></strong></div><div className="similarity-track"><i style={{width:`${item.match}%`}} /></div><small>{index === 0 ? "PRIMARY PERSONALITY MATCH" : "SECONDARY PERSONALITY MATCH"}</small></div></article>)}</div>
+      <div className="insight"><span>TYPE INSIGHT</span><p>你的首选人格是 {result[0].type}，但在相邻维度上也呈现出 {result[1].type} 的特征。这两个百分比是分别计算的相似程度，因此不需要相加等于 100%。</p></div><div className="result-actions"><button className="secondary" onClick={openHistory}>查看历史</button><button className="secondary" onClick={() => setScreen("home")}>重新测试</button><button className="primary" onClick={() => window.print()}>保存报告 <span>↓</span></button></div>
     </section>}
+    {screen === "history" && <section className="history-view"><div className="history-head"><div><span>LOCAL TEST ARCHIVE</span><h2>历史测试记录</h2><p>按当前设备区分，最多显示最近 20 次测试；不会保存逐题答案。</p></div><button className="secondary" onClick={() => setScreen("home")}>返回首页</button></div>{historyLoading ? <div className="history-empty">正在读取记录…</div> : history.length === 0 ? <div className="history-empty"><b>暂无记录</b><p>完成第一次人格扫描后，结果会出现在这里。</p><button className="primary" onClick={start}>开始测试 <span>↗</span></button></div> : <div className="history-list">{history.map((record,index) => <article key={record.id}><div className="history-index">{String(index+1).padStart(2,"0")}</div><div className="history-meta"><small>{new Date(`${record.createdAt.replace(" ", "T")}Z`).toLocaleString("zh-CN")}</small><h3>{record.aiName}</h3><p>{record.questionCount} 题深度 · 双结果报告</p></div><div className="history-types"><span><img src={`/mbti/${record.primaryType.toLowerCase()}.svg`} alt="" /><b>{record.primaryType}</b><strong>{record.primaryMatch}%</strong></span><i>+</i><span><img src={`/mbti/${record.secondaryType.toLowerCase()}.svg`} alt="" /><b>{record.secondaryType}</b><strong>{record.secondaryMatch}%</strong></span></div></article>)}</div>}</section>}
   </main>;
 }
