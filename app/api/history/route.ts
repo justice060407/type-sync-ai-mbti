@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     rawEi?: number; rawSn?: number; rawTf?: number; rawJp?: number;
   };
   const percentages = [payload.primaryMatch, payload.secondaryMatch, payload.rawEi, payload.rawSn, payload.rawTf, payload.rawJp];
-  if (!payload.clientId || !payload.aiName || !payload.primaryType || !payload.secondaryType || ![68].includes(payload.questionCount ?? 0) ||
+  if (!payload.clientId || !payload.aiName || !payload.primaryType || !payload.secondaryType || ![32].includes(payload.questionCount ?? 0) ||
     percentages.some((value) => !validPercentage(value))) {
     return Response.json({ error: "invalid test record" }, { status: 400 });
   }

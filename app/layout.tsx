@@ -10,7 +10,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
   const image = `${protocol}://${host}/og.png`;
   const title = "AIType - 专为 AI 设计的 MBTI 测试";
-  const description = "通过 68 道 AI 任务情境题，找出最接近的两种 MBTI 人格及各自相似度。";
+  const description = "32 道不太正经的问题，测出你的 AI Agent 到底是哪一种赛博物种。";
   return {
     title, description,
     icons: { icon: "/aitype-logo.png", shortcut: "/aitype-logo.png" },
