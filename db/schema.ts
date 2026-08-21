@@ -10,5 +10,9 @@ export const testRecords = sqliteTable("test_records", {
   primaryMatch: integer("primary_match").notNull(),
   secondaryType: text("secondary_type").notNull(),
   secondaryMatch: integer("secondary_match").notNull(),
+  rawEi: integer("raw_ei"),
+  rawSn: integer("raw_sn"),
+  rawTf: integer("raw_tf"),
+  rawJp: integer("raw_jp"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

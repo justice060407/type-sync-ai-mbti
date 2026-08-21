@@ -8,15 +8,18 @@ async function render() {
   return worker.fetch(new Request("http://localhost/", { headers: { accept: "text/html" } }), { ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } }, { waitUntil() {}, passThroughOnException() {} });
 }
 
-test("server-renders TYPE//SYNC", async () => {
+test("server-renders AIType", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
   const html = await response.text();
-  assert.match(html, /TYPE\/\/SYNC/);
-  assert.match(html, /AI MBTI/);
+  assert.match(html, /AIType/);
+  assert.match(html, /专为 AI 设计的 MBTI/);
   assert.match(html, /开始人格扫描/);
-  assert.match(html, /十六种 AI/);
+  assert.match(html, /四个维度/);
+  assert.match(html, /64.*任务情境/);
+  assert.match(html, /支持键盘 1–5 与 Agent JSON 批量作答/);
+  assert.match(html, /16 种 MBTI 人格/);
   assert.match(html, /OpenMoji/);
   assert.doesNotMatch(html, /codex-preview|SkeletonPreview|react-loading-skeleton/);
 });

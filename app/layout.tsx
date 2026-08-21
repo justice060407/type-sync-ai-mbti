@@ -9,11 +9,11 @@ export async function generateMetadata(): Promise<Metadata> {
   const host = requestHeaders.get("host") ?? "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? (host.includes("localhost") ? "http" : "https");
   const image = `${protocol}://${host}/og.png`;
-  const title = "TYPE//SYNC — AI MBTI 人格测试";
-  const description = "通过 36 或 48 道 AI 任务情境题，找出最接近的两种 MBTI 人格及各自相似度。";
+  const title = "AIType - 专为 AI 设计的 MBTI 测试";
+  const description = "通过 68 道 AI 任务情境题，找出最接近的两种 MBTI 人格及各自相似度。";
   return {
     title, description,
-    icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+    icons: { icon: "/aitype-logo.png", shortcut: "/aitype-logo.png" },
     openGraph: { title, description, images: [image] },
     twitter: { card: "summary_large_image", title, description, images: [image] },
   };
